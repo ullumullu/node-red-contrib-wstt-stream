@@ -1,0 +1,68 @@
+<script type="text/x-red" data-template-name="micro-to-watson-speech-to-text-stream">
+  <div class="form-row">
+      <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+      <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+     <label for="node-input-username"><i class="icon-tag"></i> Username</label>
+     <input type="text" id="node-input-username">
+  </div>
+  <div class="form-row">
+     <label for="node-input-password"><i class="fa fa-key"></i> Password</label>
+     <input type="password" id="node-input-password">
+  </div>
+  <div class="form-row">
+     <label for="node-input-treshold"><i class="fa fa-audio-o"></i> Threshold (0-1)</label>
+     <input type="number" id="node-input-treshold">
+  </div>
+  <div class="form-row">
+     <label for="node-input-silence"><i class="fa fa-microphone-slash"></i> Silence timeout (seconds)</label>
+     <input type="number" id="node-input-silence">
+  </div>
+</script>
+
+<script type="text/x-red" data-help-name="micro-to-watson-speech-to-text-stream">
+    <p>The Text To Speech service understands text and natural language to generate synthesized audio output complete
+    with appropriate cadence and intonation.</p>
+    <p>You can choose different voices for a range of languages:</b>.</p>
+    <p>The text to be converted should be passed in on <code>msg.payload</code>.</p>
+    <p><b>The source text must be in the language which matches the chosen voice, i.e. you cannot choose to a Spanish
+    voice with English text.</b>.</p>
+    <p>The returned audio transcription will be returned as a raw buffer containing the audio on <code>msg.speech</code>.</p>
+    <p>For more information about the Text To Speech service, read the <a href="https://www.ibm.com/smarterplanet/us/en/ibmwatson/developercloud/text-to-speech.html">documentation</a>.</p>
+</script>
+
+<script type="text/javascript">
+    (function() {
+        RED.nodes.registerType('micro-to-watson-speech-to-text-stream', {
+            category: 'input',
+            defaults: {
+                name: {value: ""},
+                silence: {value:3},
+                treshold: {value:0.1},
+                lang: {value: ""},
+                langhidden: {value: ""},
+                langcustom: {value: ''},
+                langcustomhidden: {value: ''},
+                voice: {value: ""},
+                voicehidden: {value: ""},
+                format: {value: "audio/wav"},
+            },
+            credentials: {
+              username: {type:"text"},
+              password: {type:"password"} // Taken out because, was not being restored on dialog open.
+            },
+            color: "rgb(140, 198, 63)",
+            inputs:1,
+            outputs:1,
+            icon: "icon.png",
+            paletteLabel: "micro text to speech stream",
+            label: function() {
+                return this.name || "micro text to speech stream";
+            },
+            labelStyle: function() {
+                return this.name ? "node_label_italic" : "";
+            }
+        });
+     })();
+</script>

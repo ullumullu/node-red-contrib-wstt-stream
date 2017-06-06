@@ -1,0 +1,21 @@
+{
+  "name": "node-red-contrib-speech2text-stream",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mic": "git+https://github.com/ashishbajaj99/mic.git#2c61413e501922768c3695575a6b78f684c518da",
+    "watson-developer-cloud": "^2.32.0"
+  },
+  "keywords": [ "node-red" ],
+  "node-red"     : {
+      "nodes": {
+          "micro-to-watson-speech-to-text-stream": "index.js"
+      }
+  }
+}
