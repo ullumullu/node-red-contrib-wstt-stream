@@ -17,5 +17,11 @@
       "nodes": {
           "micro-to-watson-speech-to-text-stream": "index.js"
       }
+  },
+  "repository": {
+    "git": "https://github.com/ullumullu/node-red-contrib-wstt-stream"
+  },
+  "engines": {
+    "node": "6.x"
   }
 }
