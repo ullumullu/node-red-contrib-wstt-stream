@@ -19,17 +19,23 @@
      <label for="node-input-silence"><i class="fa fa-microphone-slash"></i> Silence timeout (seconds)</label>
      <input type="number" id="node-input-silence">
   </div>
+  <div class="form-row">
+     <label for="node-input-device"><i class="fa fa-microphone"></i> Input Device</label>
+     <input type="text" id="node-input-device">
+  </div>
+  <div class="form-row">
+     <label for="node-input-model"><i class="fa fa-language"></i> Language</label>
+     <input type="text" id="node-input-model">
+  </div>
 </script>
 
 <script type="text/x-red" data-help-name="micro-to-watson-speech-to-text-stream">
-    <p>The Text To Speech service understands text and natural language to generate synthesized audio output complete
-    with appropriate cadence and intonation.</p>
+    <p>This node understands natural language to generate a textual representation of the spoken words. This is based on the Watson Speech to Text service. The main difference to the IBM provided node is that the audio is streamed to the Watson Speech to Text service.</p>
     <p>You can choose different voices for a range of languages:</b>.</p>
-    <p>The text to be converted should be passed in on <code>msg.payload</code>.</p>
-    <p><b>The source text must be in the language which matches the chosen voice, i.e. you cannot choose to a Spanish
-    voice with English text.</b>.</p>
-    <p>The returned audio transcription will be returned as a raw buffer containing the audio on <code>msg.speech</code>.</p>
-    <p>For more information about the Text To Speech service, read the <a href="https://www.ibm.com/smarterplanet/us/en/ibmwatson/developercloud/text-to-speech.html">documentation</a>.</p>
+    <p>For audio input the default mic from the device is used. At the moment this is not configurable.</p>
+    <p>You can pass in <code>start</code> and <code>stop</code> commands to enable or disable the microphone. Pass the values in the <code>msg.payload</code>.</p>
+    <p>The returned text transcription will be returned as a string in <code>msg.payload</code>.</p>
+    <p>For more information about the Speech To Text service, read the <a href="https://www.ibm.com/watson/services/speech-to-text/">documentation</a>.</p>
 </script>
 
 <script type="text/javascript">
@@ -47,6 +53,8 @@
                 voice: {value: ""},
                 voicehidden: {value: ""},
                 format: {value: "audio/wav"},
+                device: {value: "plughw:1,0"},
+                model: {value: "en-US_BroadbandModel"}
             },
             credentials: {
               username: {type:"text"},

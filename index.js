@@ -1,28 +1,11 @@
-/**
- * Copyright 2017 IBM Corp. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-/* jslint node: true, esversion: 6 */
-
 'use strict';
 
 const SpeechToTextV1 = require('watson-developer-cloud/speech-to-text/v1');
 const mic = require('mic');
 
-module.exports = function(RED) {
+module.exports = function (RED) {
 
-  function Node(config) {
+  function Node (config) {
     RED.nodes.createNode(this, config);
     let node = this;
 
@@ -35,7 +18,7 @@ module.exports = function(RED) {
     let micInputStream;
     let micInstance;
 
-    node.on('input', function(msg) {
+    node.on('input', function (msg) {
       if (!msg.payload) {
         let message = 'Missing property: msg.payload';
         node.error(message, msg);
@@ -54,7 +37,7 @@ module.exports = function(RED) {
               channels: '1',
               debug: false,
               exitOnSilence: 0,
-              device:"plughw:1,0"
+              device: config.device
           });
 
           micInstance.start();
@@ -64,28 +47,27 @@ module.exports = function(RED) {
           let counter = 0;
           let value = 0;
           let silenceSamples = 0;
-          let trigger = config.silence * 4; // 3 seconds
+          let trigger = config.silence * 4;
           let treshold = config.treshold*32768;
           let firstBuffer;
-          micInputStream.on('data', function(data) {
-            // console.log('ondata');
-            if(!firstBuffer) firstBuffer = data;
-
-            for(let i=0; i < data.length; i = i + 2) {
+          micInputStream.on('data', function (data) {
+            if (!firstBuffer) {
+              firstBuffer = data;
+            }
+            for (let i=0; i < data.length; i = i + 2) {
               let buffer = new ArrayBuffer(16);
               let int8View = new Int8Array(buffer);
-              int8View[0]=data[i];
-              int8View[1]=data[i+1];
-              value = (value + Math.abs(new Int16Array(buffer,0,1)[0]))/2;
+              int8View[0] = data[i];
+              int8View[1] = data[i+1];
+              value = (value + Math.abs(new Int16Array(buffer,0,1)[0])) / 2;
               counter++;
               
-              if(counter === 4000) {
-                if(value > treshold) {
+              if (counter === 4000) {
+                if (value > treshold) {
                   silenceSamples = 0;
                 } else {
                   silenceSamples++;
-                  if(silenceSamples === trigger) {
-                    // console.log('silence');
+                  if (silenceSamples === trigger) {
                     if (sttStream) sttStream.end();
                     sttStream = undefined;
                     node.send({payload:'silence'});
@@ -97,33 +79,22 @@ module.exports = function(RED) {
               }
             }
             if (silenceSamples < trigger) {
-              // console.log('ondata write');
-              if(!sttStream) {
-                sttStream = speech_to_text.createRecognizeStream({ content_type: 'audio/l16; rate=40000', model:'en-US_BroadbandModel', "interim_results": "false"});
+              if (!sttStream) {
+                sttStream = speech_to_text.createRecognizeStream({ content_type: 'audio/l16; rate=32000', model:config.model, "interim_results": "false"});
                 sttStream.write(firstBuffer);
                 sttStream.on('results', function(data) {
-                  if(
-                    data.results[0] && 
-                    data.results[0].final === false &&
-                    data.results[0].alternatives[0] &&
-                    data.results[0].alternatives[0].transcript
-                    ) {
+                  if (data.results[0] && data.results[0].final === false && data.results[0].alternatives[0] 
+                  && data.results[0].alternatives[0].transcript) {
                     node.status({fill:"blue", shape:"dot", text:data.results[0].alternatives[0].transcript});
-                  } else if(
-                    data.results[0] && 
-                    data.results[0].final === true &&
-                    data.results[0].alternatives[0] &&
-                    data.results[0].alternatives[0].transcript
-                    ) {
+                  } else if (data.results[0] && data.results[0].final === true && data.results[0].alternatives[0] 
+                  && data.results[0].alternatives[0].transcript) {
                     node.send({payload: data.results[0].alternatives[0].transcript.toString('utf8')});
                     node.status({fill:"green", shape:"dot", text:"done " + data.results[0].alternatives[0].transcript.toString('utf8')});
                   }
                 });
               }
-              // console.log('sttStream !== undefined ', sttStream !== undefined);
               sttStream.write(data);
             } 
-            // console.log('ondata end ');
           });
 
           micInputStream.on('error', function(err) {
@@ -142,8 +113,8 @@ module.exports = function(RED) {
           break;
         case 'stop':
           node.status({fill:"Red", shape:"dot", text:"stopped"});
-          if (micInstance) micInstance.stop();
-          if (micInputStream) micInputStream.end();
+          if (micInstance) {micInstance.stop();}
+          if (micInputStream) {micInputStream.end();}
           if (sttStream) {sttStream.end(); sttStream = undefined;}
           break;
         default:
@@ -155,9 +126,9 @@ module.exports = function(RED) {
 
     node.on('close', function() {
       node.status({fill:"red", shape:"dot", text:"closed"});
-      if (micInstance) micInstance.stop();
-      if (micInputStream) micInputStream.end();
-      if (sttStream) sttStream.end();
+      if (micInstance) {micInstance.stop();}
+      if (micInputStream) {micInputStream.end();}
+      if (sttStream) {sttStream.end();}
     });
 
   }
