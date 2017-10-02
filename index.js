@@ -14,9 +14,30 @@ module.exports = function (RED) {
       "password": this.credentials.password
     });
 
-    let sttStream;
-    let micInputStream;
-    let micInstance;
+    let sttStream = undefined;
+    let micInputStream = undefined;
+    let micInstance = undefined;
+    let isRunning = false;
+
+    let closeStreams = () => {
+      try {
+        if (micInstance) {
+          micInstance.stop();
+        }
+        if (micInputStream) {
+          micInputStream.end();
+        }
+        if (sttStream) {
+          sttStream.end();
+          sttStream=undefined;
+        }
+        return true;
+      } 
+      catch (err) {
+        node.error('Cloud not close streams', err);
+        return false;
+      }
+    }
 
     node.on('input', function (msg) {
       if (!msg.payload) {
@@ -28,9 +49,10 @@ module.exports = function (RED) {
     
       switch (payload) {
         case 'start':
+          isRunning = true;
           node.status({fill:"yellow", shape:"dot", text:"starting"});
           micInstance = mic({
-              rate: '16000',
+              rate: '48000',
               bitwidth: '16',
               endian: 'little',
               encoding: 'signed-integer',
@@ -47,54 +69,72 @@ module.exports = function (RED) {
           let counter = 0;
           let value = 0;
           let silenceSamples = 0;
-          let trigger = config.silence * 4;
+          let trigger = config.silence * 16;
           let treshold = config.treshold*32768;
           let firstBuffer;
           micInputStream.on('data', function (data) {
+            if (!isRunning) {
+              return;
+            }
             if (!firstBuffer) {
               firstBuffer = data;
-            }
-            for (let i=0; i < data.length; i = i + 2) {
-              let buffer = new ArrayBuffer(16);
-              let int8View = new Int8Array(buffer);
-              int8View[0] = data[i];
-              int8View[1] = data[i+1];
-              value = (value + Math.abs(new Int16Array(buffer,0,1)[0])) / 2;
-              counter++;
-              
-              if (counter === 4000) {
-                if (value > treshold) {
-                  silenceSamples = 0;
-                } else {
-                  silenceSamples++;
-                  if (silenceSamples === trigger) {
-                    if (sttStream) sttStream.end();
-                    sttStream = undefined;
-                    node.send({payload:'silence'});
-                    node.status({fill:"blue", shape:"dot", text:"silence"});
-                  }
-                }
-                counter = 0;
-                value = 0;
-              }
-            }
-            if (silenceSamples < trigger) {
-              if (!sttStream) {
-                sttStream = speech_to_text.createRecognizeStream({ content_type: 'audio/l16; rate=32000', model:config.model, "interim_results": "false"});
-                sttStream.write(firstBuffer);
-                sttStream.on('results', function(data) {
-                  if (data.results[0] && data.results[0].final === false && data.results[0].alternatives[0] 
-                  && data.results[0].alternatives[0].transcript) {
-                    node.status({fill:"blue", shape:"dot", text:data.results[0].alternatives[0].transcript});
-                  } else if (data.results[0] && data.results[0].final === true && data.results[0].alternatives[0] 
-                  && data.results[0].alternatives[0].transcript) {
-                    node.send({payload: data.results[0].alternatives[0].transcript.toString('utf8')});
-                    node.status({fill:"green", shape:"dot", text:"done " + data.results[0].alternatives[0].transcript.toString('utf8')});
-                  }
-                });
-              }
-              sttStream.write(data);
             } 
+            else {
+              for (let i=0; i < data.length; i = i + 2) {
+                let buffer = new ArrayBuffer(16);
+                let int8View = new Int8Array(buffer);
+                int8View[0] = data[i];
+                int8View[1] = data[i+1];
+                let timepoint = new Int16Array(buffer,0,1)[0];
+                value = value + Math.abs(timepoint);
+                counter++;
+                
+                if (counter === 4000) {
+                  value = value / 4000;
+                  if (value > treshold) {
+                    silenceSamples = 0;
+                  } else {
+                    silenceSamples++;
+                    if (silenceSamples === trigger) {
+                      if (isRunning) {
+                        node.send({payload:'silence'});
+                        node.status({fill:"blue", shape:"dot", text:"silence"});
+                      }
+                      if (sttStream) {
+                        sttStream.end();
+                        sttStream = undefined;
+                      }
+                    }
+                  }
+                  counter = 0;
+                  value = 0;
+                }
+              }
+
+              if (silenceSamples < trigger) {
+                if (!sttStream) {
+                  let recognizeConfig = { 
+                    content_type: 'audio/l16; rate=48000;', 
+                    model:config.model, 
+                    interim_results: true
+                  }
+                  sttStream = speech_to_text.createRecognizeStream(recognizeConfig);
+                  sttStream.write(firstBuffer);
+                  sttStream.on('results', function(data) {
+                    if (data.results[0] && data.results[0].alternatives[0] && data.results[0].alternatives[0].transcript) {
+                      if (data.results[0].final === false) {
+                        node.status({fill:"blue", shape:"dot", text:data.results[0].alternatives[0].transcript});
+                      } 
+                      else if (data.results[0].final === true) {
+                        node.send({payload: data.results[0].alternatives[0].transcript.toString('utf8')});
+                        node.status({fill:"green", shape:"dot", text:"done " + data.results[0].alternatives[0].transcript.toString('utf8')});
+                      }
+                    }
+                  });
+                }
+                sttStream.write(data);
+              }
+            }
           });
 
           micInputStream.on('error', function(err) {
@@ -112,10 +152,9 @@ module.exports = function (RED) {
 
           break;
         case 'stop':
+          isRunning = false;
           node.status({fill:"Red", shape:"dot", text:"stopped"});
-          if (micInstance) {micInstance.stop();}
-          if (micInputStream) {micInputStream.end();}
-          if (sttStream) {sttStream.end(); sttStream = undefined;}
+          closeStreams();
           break;
         default:
           node.status({fill:"Red", shape:"dot", text:"invalid input"});
@@ -126,9 +165,7 @@ module.exports = function (RED) {
 
     node.on('close', function() {
       node.status({fill:"red", shape:"dot", text:"closed"});
-      if (micInstance) {micInstance.stop();}
-      if (micInputStream) {micInputStream.end();}
-      if (sttStream) {sttStream.end();}
+      closeStreams();
     });
 
   }
