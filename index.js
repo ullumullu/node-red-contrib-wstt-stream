@@ -29,7 +29,7 @@ module.exports = function (RED) {
         }
         if (sttStream) {
           sttStream.end();
-          sttStream=undefined;
+          sttStream = undefined;
         }
         return true;
       } 
@@ -116,7 +116,8 @@ module.exports = function (RED) {
                   let recognizeConfig = { 
                     content_type: 'audio/l16; rate=48000;', 
                     model:config.model, 
-                    interim_results: true
+                    interim_results: true,
+                    inactivity_timeout: parseInt(config.silence)
                   }
                   sttStream = speech_to_text.createRecognizeStream(recognizeConfig);
                   sttStream.write(firstBuffer);
@@ -131,6 +132,14 @@ module.exports = function (RED) {
                       }
                     }
                   });
+
+                  sttStream.on('close', (code, reason) => {
+                    console.log(`Code: ${code} Reason: ${reason}`);
+                  });
+                  sttStream.on('error', (err) => {
+                    console.log(`Error in Speech To Text: ${err}`);
+                  });
+
                 }
                 sttStream.write(data);
               }
