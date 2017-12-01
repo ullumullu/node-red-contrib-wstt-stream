@@ -1,77 +1,86 @@
 'use strict';
 
+const debug = require('debug')('wstt:node-red')
 const SpeechToTextV1 = require('watson-developer-cloud/speech-to-text/v1');
 const mic = require('mic');
 
 module.exports = function (RED) {
 
+  /**
+   * Watson Speech to Text Stream Node
+   * @param {*} config 
+   */
   function Node (config) {
+    debug('ENTER Creade WSTT Node %o', config);
     RED.nodes.createNode(this, config);
     let node = this;
 
     let speech_to_text = new SpeechToTextV1({
-      "username": this.credentials.username,
-      "password": this.credentials.password
+      username: this.credentials.username,
+      password: this.credentials.password
     });
 
+    let micInstance = undefined;
     let sttStream = undefined;
     let micInputStream = undefined;
-    let micInstance = undefined;
+
     let isRunning = false;
 
     let closeStreams = () => {
+      debug('ENTER closeStreams');
       try {
         if (micInstance) {
+          debug('Stop micInstance');
           micInstance.stop();
         }
+        
         if (micInputStream) {
+          debug('Stop micInputStream');
           micInputStream.end();
         }
         if (sttStream) {
+          debug('Stop sttStream');
           sttStream.end();
-          sttStream = undefined;
         }
         return true;
       } 
       catch (err) {
-        node.error('Cloud not close streams', err);
+        node.error('Could not close streams', err);
         return false;
+      }
+      finally {
+        debug('EXIT closeStreams');
       }
     }
 
     node.on('input', function (msg) {
-      if (!msg.payload) {
-        let message = 'Missing property: msg.payload';
-        node.error(message, msg);
-        return;
-      }
-      let { payload } = msg;
+      let { payload = '' } = msg;
     
       switch (payload) {
         case 'start':
-          isRunning = true;
           node.status({fill:"yellow", shape:"dot", text:"starting"});
-          micInstance = mic({
-              rate: '48000',
-              bitwidth: '16',
-              endian: 'little',
-              encoding: 'signed-integer',
-              channels: '1',
-              debug: false,
-              exitOnSilence: 0,
-              device: config.device
-          });
 
-          micInstance.start();
-
-          micInputStream = micInstance.getAudioStream();
-
+          let trigger = config.silence * 16;
+          let treshold = config.treshold * 32768;
           let counter = 0;
           let value = 0;
           let silenceSamples = 0;
-          let trigger = config.silence * 16;
-          let treshold = config.treshold*32768;
           let firstBuffer;
+          let lastResult = ''; 
+
+          micInstance = mic({
+            rate: '48000',
+            bitwidth: '16',
+            endian: 'little',
+            encoding: 'signed-integer',
+            channels: '1',
+            debug: false,
+            exitOnSilence: 0,
+            device: config.device
+          });
+
+          micInputStream = micInstance.getAudioStream();
+
           micInputStream.on('data', function (data) {
             if (!isRunning) {
               return;
@@ -86,23 +95,25 @@ module.exports = function (RED) {
                 int8View[0] = data[i];
                 int8View[1] = data[i+1];
                 let timepoint = new Int16Array(buffer,0,1)[0];
-                value = value + Math.abs(timepoint);
-                counter++;
                 
-                if (counter === 4000) {
-                  value = value / 4000;
+                counter++;
+                value = value + Math.abs(timepoint);
+                if (counter === 3000) {
+                  value = value / 3000;
+                  
                   if (value > treshold) {
                     silenceSamples = 0;
                   } else {
                     silenceSamples++;
                     if (silenceSamples === trigger) {
+                      debug('Silence triggered');
                       if (isRunning) {
                         node.send({payload:'silence'});
-                        node.status({fill:"blue", shape:"dot", text:"silence"});
+                        node.status({fill:"blue", shape:"dot", text:`Silence. Last Result: ${lastResult}`});
                       }
                       if (sttStream) {
+                        debug('End sttStream');
                         sttStream.end();
-                        sttStream = undefined;
                       }
                     }
                   }
@@ -117,27 +128,48 @@ module.exports = function (RED) {
                     content_type: 'audio/l16; rate=48000;', 
                     model:config.model, 
                     interim_results: true,
-                    inactivity_timeout: parseInt(config.silence)
+                    inactivity_timeout: parseInt(config.silence)+1
                   }
                   sttStream = speech_to_text.createRecognizeStream(recognizeConfig);
                   sttStream.write(firstBuffer);
-                  sttStream.on('results', function(data) {
-                    if (data.results[0] && data.results[0].alternatives[0] && data.results[0].alternatives[0].transcript) {
-                      if (data.results[0].final === false) {
-                        node.status({fill:"blue", shape:"dot", text:data.results[0].alternatives[0].transcript});
-                      } 
-                      else if (data.results[0].final === true) {
-                        node.send({payload: data.results[0].alternatives[0].transcript.toString('utf8')});
-                        node.status({fill:"green", shape:"dot", text:"done " + data.results[0].alternatives[0].transcript.toString('utf8')});
-                      }
+                  sttStream.on('results', function (data) {
+                    let {results = []} = data;
+                    let firstResult = results[0];
+
+                    if (!(firstResult && firstResult.alternatives[0] && firstResult.alternatives[0].transcript)) {
+                      debug('WARN: No results from STT Service. Data - %o', data);
+                      return;
                     }
+
+                    if (firstResult.final === false) {
+                      node.status({
+                        fill:"blue", 
+                        shape: "dot", 
+                        text: firstResult.alternatives[0].transcript
+                      });
+                    } 
+                    else if (firstResult.final === true) {
+                      lastResult = firstResult.alternatives[0].transcript.toString('utf8');
+                      debug('Final Text: %s', lastResult);
+                      node.send({
+                        payload: lastResult
+                      });
+                      node.status({
+                        fill:"green", 
+                        shape:"dot", 
+                        text: "Final: " + lastResult
+                      });
+                    }
+
                   });
 
                   sttStream.on('close', (code, reason) => {
-                    console.log(`Code: ${code} Reason: ${reason}`);
+                    debug(`Close Stream - Code: ${code} Reason: ${reason}`);
+                    sttStream = undefined;
                   });
+
                   sttStream.on('error', (err) => {
-                    console.log(`Error in Speech To Text: ${err}`);
+                    debug(`Error in Speech To Text: ${err}`);
                   });
 
                 }
@@ -146,35 +178,51 @@ module.exports = function (RED) {
             }
           });
 
-          micInputStream.on('error', function(err) {
-            node.status({fill:"red", shape:"dot", text:"mic stream error"})
-            cosole.log("Error in Input Stream: " + err);
+          micInputStream.on('stopComplete', function() {
+            debug('EVENT: stopComplete');
+            isRunning = false;
+            micInstance = undefined;
+            micInputStream = undefined;
+            debug('Mic Stream Closed');
           });
 
           micInputStream.on('startComplete', function() {
+            debug('EVENT: startComplete');
+            isRunning = true;
             node.status({fill:"green", shape:"dot", text:"waiting for input"});
+            debug('Mic Stream Opened')
           });
-              
+
+          micInputStream.on('error', function(err) {
+            debug('EVENT: error');
+            node.status({fill:"red", shape:"dot", text:"mic stream error"})
+            debug("Error in Input Stream: " + err);
+          });
+
           micInputStream.on('processExitComplete', function() {
+            debug('EVENT: processExitComplete');
             node.status({fill:"red", shape:"dot", text:"process exited"});
           });
 
+          micInstance.start();
+
           break;
         case 'stop':
-          isRunning = false;
           node.status({fill:"Red", shape:"dot", text:"stopped"});
           closeStreams();
           break;
         default:
-          node.status({fill:"Red", shape:"dot", text:"invalid input"});
+          node.status({fill:"Red", shape:"dot", text:`Invalid input to msg.payload: ${msg.payload}`});
           break;
       }
 
     });
 
     node.on('close', function() {
+      debug('EVENT: close');
       node.status({fill:"red", shape:"dot", text:"closed"});
       closeStreams();
+      debug('Node closed');
     });
 
   }

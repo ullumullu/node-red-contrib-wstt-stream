@@ -9,7 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "mic": "git+https://github.com/ashishbajaj99/mic.git#2c61413e501922768c3695575a6b78f684c518da",
+    "debug": "^3.1.0",
+    "mic": "^2.1.2",
     "watson-developer-cloud": "^2.32.0"
   },
   "keywords": [
