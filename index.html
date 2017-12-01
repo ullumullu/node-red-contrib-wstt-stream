@@ -41,7 +41,7 @@
 <script type="text/javascript">
     (function() {
         RED.nodes.registerType('micro-to-watson-speech-to-text-stream', {
-            category: 'input',
+            category: 'IBM Watson',
             defaults: {
                 name: {value: ""},
                 silence: {value: 3},
@@ -64,7 +64,7 @@
             inputs:1,
             outputs:1,
             icon: "icon.png",
-            paletteLabel: "micro text to speech stream",
+            paletteLabel: "micro speech to text stream",
             label: function() {
                 return this.name || "micro text to speech stream";
             },
